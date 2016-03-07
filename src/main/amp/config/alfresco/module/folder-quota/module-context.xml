@@ -104,6 +104,12 @@
 		<property name="updateUsageOnAddAspect" value="true"/>
 		<property name="useJobQueue" value="false"/>
 		<property name="threadPoolExecutor" ref="quotaThreadPoolExecutor"/>
+		<property name="tenantService" ref="tenantService" />
+		<property name="stores>
+			<list>
+            	<value>workspace://SpacesStore</value>
+        	</list>		
+		</property>
 	</bean>
 	
 </beans>
