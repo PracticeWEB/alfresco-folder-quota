@@ -5,7 +5,13 @@
   <groupId>com.alfresco</groupId>
   <artifactId>folder-quota</artifactId>
   <packaging>amp</packaging>
-
+  <description>Folder Quotas</description>
+  <version>0.2</version>
+  
+  <build>
+    <finalName>${project.artifactId}-${project.version}</finalName>
+  </build>
+  
   <parent>
     <groupId>org.alfresco.maven</groupId>
     <artifactId>alfresco-sdk-parent</artifactId>
@@ -32,36 +38,11 @@
     </dependencies>
   </dependencyManagement>
 
-
   <dependencies>
     <dependency>
       <groupId>${alfresco.groupId}</groupId>
       <artifactId>alfresco-repository</artifactId>
     </dependency>
-    <!--
-    <dependency>
-      <groupId>log4j</groupId>
-      <artifactId>log4j</artifactId>
-      <version>1.2.16</version>
-      <scope>provided</scope>
-    </dependency>
-    <dependency>
-      <groupId>com.opensymphony.quartz</groupId>
-      <artifactId>com.springsource.org.quartz</artifactId>
-      <version>1.6.2</version>
-    </dependency>
-    <dependency>
-       <groupId>javax.transaction</groupId>
-       <artifactId>jta</artifactId>
-       <version>1.1</version>
-    </dependency>
-    <dependency>
-      <groupId>org.springframework</groupId>
-      <artifactId>spring-beans</artifactId>
-      <version>3.0.5.RELEASE</version>
-      <scope>provided</scope>
-    </dependency>
-    -->
   </dependencies>
 
   <repositories>
@@ -77,6 +58,5 @@
       <snapshots><enabled>true</enabled></snapshots>
     </pluginRepository>
   </pluginRepositories>
-
-  <version>0.2</version>
+  
 </project>
