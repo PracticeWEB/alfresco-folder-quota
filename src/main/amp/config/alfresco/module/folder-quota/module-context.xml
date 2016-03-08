@@ -105,7 +105,7 @@
 		<property name="useJobQueue" value="false"/>
 		<property name="threadPoolExecutor" ref="quotaThreadPoolExecutor"/>
 		<property name="tenantService" ref="tenantService" />
-		<property name="stores>
+		<property name="stores">
 			<list>
             	<value>workspace://SpacesStore</value>
         	</list>		
