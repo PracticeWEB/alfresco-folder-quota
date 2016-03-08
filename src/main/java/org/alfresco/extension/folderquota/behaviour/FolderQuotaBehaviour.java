@@ -24,6 +24,7 @@
 package org.alfresco.extension.folderquota.behaviour;
 
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ThreadPoolExecutor;
 
@@ -33,6 +34,7 @@ import javax.transaction.UserTransaction;
 import org.alfresco.extension.folderquota.FolderQuotaConstants;
 import org.alfresco.extension.folderquota.FolderUsageCalculator;
 import org.alfresco.extension.folderquota.SizeChange;
+import org.alfresco.model.ContentModel;
 import org.alfresco.repo.content.ContentServicePolicies;
 import org.alfresco.repo.node.NodeServicePolicies;
 import org.alfresco.repo.policy.Behaviour;
@@ -40,6 +42,7 @@ import org.alfresco.repo.policy.JavaBehaviour;
 import org.alfresco.repo.policy.PolicyComponent;
 import org.alfresco.repo.security.authentication.AuthenticationUtil;
 import org.alfresco.repo.security.authentication.AuthenticationUtil.RunAsWork;
+import org.alfresco.repo.tenant.TenantService;
 import org.alfresco.repo.transaction.AlfrescoTransactionSupport;
 import org.alfresco.repo.transaction.RetryingTransactionHelper;
 import org.alfresco.repo.transaction.RetryingTransactionHelper.RetryingTransactionCallback;
@@ -75,6 +78,13 @@ public class FolderQuotaBehaviour implements ContentServicePolicies.OnContentPro
     private static final String KEY_FOLDER_SIZE_CHANGE = FolderQuotaBehaviour.class.getName() + ".sizeUpdate";
     private ThreadPoolExecutor threadPoolExecutor;
     private TransactionListener transactionListener;
+    
+    /* Key for deleted nodes */
+    private static final String KEY_DELETED_NODES = FolderQuotaBehaviour.class.getName() + ".deletedNodes";
+    
+    private TenantService tenantService;
+    
+    private List<String> stores;
     
     /**
      * Initialize this behaviour component, binding class behaviour.
@@ -207,17 +217,74 @@ public class FolderQuotaBehaviour implements ContentServicePolicies.OnContentPro
 	public void beforeDeleteNode(NodeRef deleted) {
 		
         logger.debug("[FolderQuota] - beforeDeleteNode");
-        
-        NodeRef quotaParent = usage.getParentFolderWithQuota(deleted);
-        
-    	if(quotaParent != null)
+                
+        NodeRef quotaParent = usage.getParentFolderWithQuota(deleted);        
+        // We don't trigger on folders since we'll record the size change twice.
+        QName typeName = serviceRegistry.getFileFolderService().getFileInfo(deleted).getType();
+        boolean isFolder = serviceRegistry.getDictionaryService().isSubClass(typeName, ContentModel.TYPE_FOLDER);        
+    	boolean isSupportedStore = stores.contains(tenantService.getBaseName(deleted.getStoreRef()).toString());
+		if(isSupportedStore && quotaParent != null && ! alreadyDeleted(deleted) && ! isFolder)
     	{
     		Long size = usage.getChangeSize(deleted);
+    		logger.debug("changing size due to deletion " + size.toString());
     		updateSize(quotaParent, size * -1);
 			//queue.enqueueEvent(quotaParent, size * -1);
+    		// record that we've deleted the node
+    		recordDelete(deleted);
     	}	
 	}
 	
+	/**
+	 * Record that we've already processed a node delete by adding to a stack in our transaction.
+	 * 
+	 * @see ContentUsageImpl.recordDelete(NodeRef nodeRef)
+	 * 
+	 * @param NodeRef deleted
+	 *   NodeRef to record a delete for.   
+	 */
+	private void recordDelete(NodeRef deleted) {		
+		// get the stack or create a new one.
+		Set<NodeRef> deletedNodes = AlfrescoTransactionSupport.getResource(KEY_DELETED_NODES);
+		if (deletedNodes == null) {
+			deletedNodes = new HashSet<NodeRef>();
+			// bind to the transaction variable.
+			AlfrescoTransactionSupport.bindResource(KEY_DELETED_NODES, deletedNodes);
+		}
+        // add to the stack.
+		deletedNodes.add(tenantService.getName(deleted));
+		logger.debug("Recorded delete for " + deleted.toString());
+		logger.debug("Stack now " + deletedNodes.toString());
+	}
+
+	/**
+	 * Copied alreadyDeleted check from user quota behaviours
+	 *  
+	 * @see ContentUsageImpl.alreadyDeleted(NodeRef nodeRef)
+	 * 
+	 * @param NodeRef deleted
+	 *   NodeRef to check if it's already been accounted for.
+	 *   
+	 * @return boolean
+	 *   True if the nodeRef is already in our stack.
+	 */
+	private boolean alreadyDeleted(NodeRef deleted) {
+		logger.debug("Checking delete for " + deleted.toString());
+		// Get the stack.
+		Set<NodeRef> deletedNodes = AlfrescoTransactionSupport.getResource(KEY_DELETED_NODES);
+		if (deletedNodes != null) {
+			logger.debug("Stack is " + deletedNodes.toString());
+			for (NodeRef deletedNodeRef : deletedNodes) {
+				if (deletedNodeRef.equals(deleted)) {
+					if (logger.isDebugEnabled()) {
+						logger.debug("alreadyDeleted: nodeRef=" + deleted);
+					}
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
 	/**
 	 * When the folder quota aspect is added, should we go ahead and calculate current usage?
 	 * I think so, but this could be an expensive operation.
@@ -243,7 +310,8 @@ public class FolderQuotaBehaviour implements ContentServicePolicies.OnContentPro
 	{
 		logger.debug("[FolderQuota] - updateSize");
 		AlfrescoTransactionSupport.bindListener(transactionListener);
-        Set<SizeChange> sizeChanges = (Set<SizeChange>) AlfrescoTransactionSupport.getResource(KEY_FOLDER_SIZE_CHANGE);
+        @SuppressWarnings("unchecked")
+		Set<SizeChange> sizeChanges = (Set<SizeChange>) AlfrescoTransactionSupport.getResource(KEY_FOLDER_SIZE_CHANGE);
         if (sizeChanges == null)
         {
         	sizeChanges = new HashSet<SizeChange>(10);
@@ -284,6 +352,27 @@ public class FolderQuotaBehaviour implements ContentServicePolicies.OnContentPro
     {
     	this.serviceRegistry = serviceRegistry;
     }
+
+	/**
+	 * @param tenantService the tenantService to set
+	 */
+	public void setTenantService(TenantService tenantService) {
+		this.tenantService = tenantService;
+	}
+
+	/**
+	 * @return the stores
+	 */
+	public List<String> getStores() {
+		return stores;
+	}
+
+	/**
+	 * @param stores the stores to set
+	 */
+	public void setStores(List<String> stores) {
+		this.stores = stores;
+	}
 
 	public void setPolicyComponent(PolicyComponent policyComponent) 
 	{
