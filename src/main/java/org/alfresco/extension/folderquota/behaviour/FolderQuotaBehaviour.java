@@ -34,6 +34,7 @@ import javax.transaction.UserTransaction;
 import org.alfresco.extension.folderquota.FolderQuotaConstants;
 import org.alfresco.extension.folderquota.FolderUsageCalculator;
 import org.alfresco.extension.folderquota.SizeChange;
+import org.alfresco.model.ContentModel;
 import org.alfresco.repo.content.ContentServicePolicies;
 import org.alfresco.repo.node.NodeServicePolicies;
 import org.alfresco.repo.policy.Behaviour;
@@ -216,15 +217,19 @@ public class FolderQuotaBehaviour implements ContentServicePolicies.OnContentPro
 	public void beforeDeleteNode(NodeRef deleted) {
 		
         logger.debug("[FolderQuota] - beforeDeleteNode");
-        
-        NodeRef quotaParent = usage.getParentFolderWithQuota(deleted);
-        
-    	if(stores.contains(tenantService.getBaseName(deleted.getStoreRef()).toString()) && quotaParent != null && ! alreadyDeleted(deleted))
+                
+        NodeRef quotaParent = usage.getParentFolderWithQuota(deleted);        
+        // We don't trigger on folders since we'll record the size change twice.
+        QName typeName = serviceRegistry.getFileFolderService().getFileInfo(deleted).getType();
+        boolean isFolder = serviceRegistry.getDictionaryService().isSubClass(typeName, ContentModel.TYPE_FOLDER);        
+    	boolean isSupportedStore = stores.contains(tenantService.getBaseName(deleted.getStoreRef()).toString());
+		if(isSupportedStore && quotaParent != null && ! alreadyDeleted(deleted) && ! isFolder)
     	{
     		Long size = usage.getChangeSize(deleted);
+    		logger.debug("changing size due to deletion " + size.toString());
     		updateSize(quotaParent, size * -1);
 			//queue.enqueueEvent(quotaParent, size * -1);
-    		// TODO record that we've deleted the node
+    		// record that we've deleted the node
     		recordDelete(deleted);
     	}	
 	}
@@ -237,7 +242,7 @@ public class FolderQuotaBehaviour implements ContentServicePolicies.OnContentPro
 	 * @param NodeRef deleted
 	 *   NodeRef to record a delete for.   
 	 */
-	private void recordDelete(NodeRef deleted) {
+	private void recordDelete(NodeRef deleted) {		
 		// get the stack or create a new one.
 		Set<NodeRef> deletedNodes = AlfrescoTransactionSupport.getResource(KEY_DELETED_NODES);
 		if (deletedNodes == null) {
@@ -246,7 +251,9 @@ public class FolderQuotaBehaviour implements ContentServicePolicies.OnContentPro
 			AlfrescoTransactionSupport.bindResource(KEY_DELETED_NODES, deletedNodes);
 		}
         // add to the stack.
-		deletedNodes.add(tenantService.getName(deleted));	
+		deletedNodes.add(tenantService.getName(deleted));
+		logger.debug("Recorded delete for " + deleted.toString());
+		logger.debug("Stack now " + deletedNodes.toString());
 	}
 
 	/**
@@ -261,9 +268,11 @@ public class FolderQuotaBehaviour implements ContentServicePolicies.OnContentPro
 	 *   True if the nodeRef is already in our stack.
 	 */
 	private boolean alreadyDeleted(NodeRef deleted) {
+		logger.debug("Checking delete for " + deleted.toString());
 		// Get the stack.
 		Set<NodeRef> deletedNodes = AlfrescoTransactionSupport.getResource(KEY_DELETED_NODES);
 		if (deletedNodes != null) {
+			logger.debug("Stack is " + deletedNodes.toString());
 			for (NodeRef deletedNodeRef : deletedNodes) {
 				if (deletedNodeRef.equals(deleted)) {
 					if (logger.isDebugEnabled()) {
@@ -301,7 +310,8 @@ public class FolderQuotaBehaviour implements ContentServicePolicies.OnContentPro
 	{
 		logger.debug("[FolderQuota] - updateSize");
 		AlfrescoTransactionSupport.bindListener(transactionListener);
-        Set<SizeChange> sizeChanges = (Set<SizeChange>) AlfrescoTransactionSupport.getResource(KEY_FOLDER_SIZE_CHANGE);
+        @SuppressWarnings("unchecked")
+		Set<SizeChange> sizeChanges = (Set<SizeChange>) AlfrescoTransactionSupport.getResource(KEY_FOLDER_SIZE_CHANGE);
         if (sizeChanges == null)
         {
         	sizeChanges = new HashSet<SizeChange>(10);
