@@ -92,7 +92,7 @@ public class FolderQuotaBehaviour implements ContentServicePolicies.OnContentPro
     public void init() {
     	
         this.onContentPropertyUpdate = new JavaBehaviour(this, "onContentPropertyUpdate", Behaviour.NotificationFrequency.TRANSACTION_COMMIT);
-        this.beforeDeleteNode = new JavaBehaviour(this, "beforeDeleteNode", Behaviour.NotificationFrequency.FIRST_EVENT);
+        this.beforeDeleteNode = new JavaBehaviour(this, "beforeDeleteNode", Behaviour.NotificationFrequency.EVERY_EVENT);
         this.onMoveNode = new JavaBehaviour(this, "onMoveNode", Behaviour.NotificationFrequency.TRANSACTION_COMMIT);
         this.onAddAspect = new JavaBehaviour(this, "onAddAspect", Behaviour.NotificationFrequency.TRANSACTION_COMMIT);
         
@@ -220,7 +220,7 @@ public class FolderQuotaBehaviour implements ContentServicePolicies.OnContentPro
                 
         NodeRef quotaParent = usage.getParentFolderWithQuota(deleted);        
         // We don't trigger on folders since we'll record the size change twice.
-        QName typeName = serviceRegistry.getFileFolderService().getFileInfo(deleted).getType();
+        QName typeName = serviceRegistry.getNodeService().getType(deleted);
         boolean isFolder = serviceRegistry.getDictionaryService().isSubClass(typeName, ContentModel.TYPE_FOLDER);        
     	boolean isSupportedStore = stores.contains(tenantService.getBaseName(deleted.getStoreRef()).toString());
 		if(isSupportedStore && quotaParent != null && ! alreadyDeleted(deleted) && ! isFolder)
